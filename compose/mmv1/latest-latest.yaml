@@ -1,0 +1,96 @@
+version: '2'
+services:
+  zk-source:
+    image: confluentinc/cp-zookeeper:6.1.0
+    hostname: zk-source
+    container_name: zk-source
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+  kfk-source:
+    image: confluentinc/cp-kafka:6.1.0
+    hostname: kfk-source
+    container_name: kfk-source
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zk-source:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kfk-source:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zk-source
+
+  zk-target:
+    image: confluentinc/cp-zookeeper:6.1.0
+    hostname: zk-target
+    container_name: zk-target
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+  kfk-target:
+    image: confluentinc/cp-kafka:6.1.0
+    hostname: kfk-target
+    container_name: kfk-target
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zk-target:2181'
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kfk-target:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zk-target
+
+  source-broker-setup:
+    image: confluentinc/cp-kafka:6.1.0
+    hostname: source-broker-setup
+    container_name: source-broker-setup
+    # Reference for cub: https://github.com/confluentinc/confluent-docker-utils/blob/master/confluent/docker_utils/cub.py
+    command: "bash -c '
+      echo \"Waiting for broker to be ready...\" \
+      && cub kafka-ready --bootstrap_broker_list kfk-source:9092 1 30 \
+      && sleep 5 \
+      && topics=( \
+           example-1
+           example-2
+           example-3
+           ignored-topic
+      ) \
+      && for topic in $${topics[@]}; do \
+           echo \
+           && kafka-topics \
+                --create \
+                --if-not-exists \
+                --zookeeper zk-source:2181 \
+                --partitions 10 \
+                --replication-factor 1 \
+                --topic $${topic} \
+           && seq 10 \
+           | kafka-console-producer \
+               --broker-list kfk-source:9092 \
+               --topic $${topic}; \
+      done
+    '"
+    environment:
+      KAFKA_BROKER_ID: ignored
+      KAFKA_ZOOKEEPER_CONNECT: ignored
+    depends_on:
+      - zk-source
+
+  mirror-maker:
+    image: confluentinc/cp-kafka:6.1.0
+    hostname: mirror-maker
+    container_name: mirror-maker
+    volumes:
+      - ../../config/mmv1:/etc/kafka-mirror-maker
+    # Reference for cub: https://github.com/confluentinc/confluent-docker-utils/blob/master/confluent/docker_utils/cub.py
+    command: "bash -c '
+      cub kafka-ready --bootstrap_broker_list kfk-source:9092 1 30 \
+      && cub kafka-ready --bootstrap_broker_list kfk-target:9092 1 30 \
+      && sleep 10 \
+      && kafka-mirror-maker \
+           --consumer.config /etc/kafka-mirror-maker/consumer.properties \
+           --producer.config /etc/kafka-mirror-maker/producer.properties \
+           --whitelist '^example.*'
+    '"
+    depends_on:
+      - zk-source
+      - kfk-source
+      - zk-target
+      - kfk-target
+      - source-broker-setup
