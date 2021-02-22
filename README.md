@@ -4,11 +4,30 @@ This is a tiny project to help learn more about Kafka Mirror Maker (v1 and v2).
 
 ## Containers
 
-Basically this project has compose and configuration files for
+Basically this project has compose and configuration files for Active/Passive
+Broker Replication.
 
 ```text
 Broker with v1.1.1 (with log format version set to 0.8.2.2) -> Broker with latest version
 Broker with latest version -> Broker with latest version
+```
+
+**Project Structure**:
+```text
+.
+├── compose
+│   ├── mmv1
+│   │   ├── 1.1.1-latest.yaml
+│   │   └── latest-latest.yaml
+│   └── mmv2
+│       ├── 1.1.1-latest.yaml
+│       └── latest-latest.yaml
+└── config
+    ├── mmv1
+    │   ├── consumer.properties
+    │   └── producer.properties
+    └── mmv2
+        └── config.properties
 ```
 
 ### Starting containers
